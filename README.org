@@ -1,0 +1,23 @@
+#+TITLE: FRANK
+#+AUTHOR: Wouter Beek
+
+FRANK stands for Feferated Resource Architecture for Networked
+Knowledge.
+
+* RDF terms
+
+#+BEGIN_SRC prolog
+?- frank_term(Term).
+#+END_SRC
+
+* RDF triples
+
+#+BEGIN_SRC prolog
+?- frank_triple(dbr:'Frank_van_Harmelen', P, O).
+#+END_SRC
+
+* Identity closure (~owl:sameAs~)
+
+#+BEGIN_SRC prolog
+?- frank_
+#+END_SRC
