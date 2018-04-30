@@ -1,11 +1,13 @@
 :- module(
   frank,
   [
-    frank_id/1,      % -Id
-    frank_sameas/2,  % ?Term1, ?Term2
-    frank_term/1,    % ?Term
-    frank_term_id/2, % ?Term, ?Id
-    frank_triple/3   % ?S, ?P, ?O
+    count/4,   % ?S, ?P, ?O, -N
+    id/1,      % -Id
+    sameas/2,  % ?Term1, ?Term2
+    term/1,    % ?Term
+    term/2,    % +TermRole, ?Term
+    term_id/2, % ?Term, ?Id
+    triple/3   % ?S, ?P, ?O
   ]
 ).
 
@@ -34,73 +36,166 @@ Federated Resource Architecture for Networked Knowledge
    curl.
 
 :- rdf_meta
-   frank_sameas(o, o),
-   frank_term(o),
-   frank_term_id(o, ?),
-   frank_triple(r, r, o).
+   count(r, r, o, -),
+   sameas(o, o),
+   subject(r),
+   term(o),
+   term(+, o),
+   term_id(o, ?),
+   triple(r, r, o).
 
 
 
 
 
-%! frank_id(-Id:atom) is nondet.
+%! count(?S:rdf_nonliteral, ?P:iri, ?O:rdf_term, -N:nonneg) is det.
 
-frank_id(Id) :-
-  sameas_uri([id], [], Uri),
-  frank_request(Uri, Id).
+count(S, P, O, N) :-
+  triple_uri_([count], S, P, O, Uri),
+  json_request_(Uri, N).
 
 
 
-%! frank_sameas(+Term1:rdf_term, +Term2:rdf_term) is semidet.
-%! frank_sameas(+Term1:rdf_term, -Term2:rdf_term) is nondet.
-%! frank_sameas(-Term1:rdf_term, +Term2:rdf_term) is nondet.
-%! frank_sameas(-Term1:rdf_term, -Term2:rdf_term) is nondet.
+%! id(-Id:atom) is nondet.
 
-frank_sameas(Term1, Term2) :-
+id(Id) :-
+  sameas_uri_([id], [], Uri),
+  json_request_(Uri, Id).
+
+
+
+%! sameas(+Term1:rdf_term, +Term2:rdf_term) is semidet.
+%! sameas(+Term1:rdf_term, -Term2:rdf_term) is nondet.
+%! sameas(-Term1:rdf_term, +Term2:rdf_term) is nondet.
+%! sameas(-Term1:rdf_term, -Term2:rdf_term) is nondet.
+
+sameas(Term1, Term2) :-
   ground(Term1), !,
-  frank_term_id(Term1, Id),
-  frank_term_id(Term2, Id).
-frank_sameas(Term1, Term2) :-
+  (term_id(Term1, Id) -> term_id(Term2, Id) ; Term2 = Term1).
+sameas(Term1, Term2) :-
   ground(Term2), !,
-  frank_sameas(Term2, Term1).
-frank_sameas(Term1, Term2) :-
-  frank_term(Term1),
-  frank_sameas(Term1, Term2).
+  sameas(Term2, Term1).
+sameas(Term1, Term2) :-
+  term(Term1),
+  sameas(Term1, Term2).
 
 
 
-%! frank_term(+Term:rdf_term) is semidet.
-%! frank_term(-Term:rdf_term) is nondet.
+%! term(+Term:rdf_term) is semidet.
+%! term(-Term:rdf_term) is nondet.
 
-frank_term(Term) :-
-  lodalot_uri([term], [], Uri),
-  frank_request(Uri, Term).
+term(Term) :-
+  lodalot_uri_([term], [], Uri),
+  json_request_(Uri, Term).
+
+
+%! subject(+TermRole:atom, +Term:rdf_term) is semidet.
+%! subject(+TermRole:atom, -Term:rdf_term) is nondet.
+%
+% TermRole:
+%   - node
+%   - object
+%   - predicate
+%   - shared
+%   - sink
+%   - source
+%   - subject
+%   - term
+
+term(TermRole, Term) :-
+  lodalot_uri_([TermRole], [], Uri),
+  json_request_(Uri, Term).
 
 
 
-%! frank_term_id(+Term:rdf_term, -Id:atom) is semidet.
-%! frank_term_id(-Term:rdf_term, +Id:atom) is nondet.
+%! term_id(+Term:rdf_term, -Id:atom) is semidet.
+%! term_id(-Term:rdf_term, +Id:atom) is nondet.
 
-frank_term_id(Term, Id) :-
+term_id(Term, Id) :-
   ground(Term), !,
   rdf_term_to_atom(Term, TermAtom),
-  sameas_uri([id], [term(TermAtom)], Uri),
-  frank_request(Uri, Id).
-frank_term_id(Term, Id) :-
+  sameas_uri_([id], [term(TermAtom)], Uri),
+  request(Uri, Id).
+term_id(Term, Id) :-
   ground(Id), !,
-  sameas_uri([term], [id(Id)], Uri),
-  frank_request(Uri, Term).
-frank_term_id(Term, Id) :-
+  sameas_uri_([term], [id(Id)], Uri),
+  request(Uri, TermAtom),
+  rdf_atom_to_term(TermAtom, Term).
+term_id(Term, Id) :-
   instantiation_error(args(Term,Id)).
 
 
 
-%! frank_triple(?S:rdf_nonliteral, ?P:iri, ?O:rdf_term) is nondet.
+%! triple(?S:rdf_nonliteral, ?P:iri, ?O:rdf_term) is nondet.
 
-frank_triple(S, P, O) :-
-  convlist(rdf_query_term, [subject(S),predicate(P),object(O)], Query),
-  lodalot_uri([triple], Query, Uri),
-  http_open2(Uri, In, [accept(nt)]),
+triple(S, P, O) :-
+  triple_uri_([], S, P, O, Uri),
+  catch(http_call(Uri, triple_(S, P, O), [accept(nt)]), E, error_(E)).
+
+
+
+
+
+% GENERICS %
+
+%! error_(+E:compound) is semidet.
+
+error_(E) :-
+  ansi_format([fg(red)], "~w\n", [E]),
+  fail.
+
+
+
+%! json_(?Term:term, +In:stream) is nondet.
+%
+% There is a barber who shaves all and only men who do not shave
+% themselves and only men who do not shave themselves.
+%
+% Does the barber shave himself?
+
+json_(Term, In) :-
+  set_stream(In, encoding(utf8)), % TBD
+  call_cleanup(
+    json_read_dict(In, L, [value_string_as(atom)]),
+    close(In)
+  ),
+  (is_list(L) -> member(Term, L) ; Term = L).
+
+
+
+%! json_request_(+Uri:atom, -Term:term) is nondet.
+
+json_request_(Uri, Term) :-
+  catch(http_call(Uri, json_(Term), [accept(json),failure(404)]), E, error_(E)).
+
+
+
+%! lodalot_uri_(+Segments:list(atom), +Query:list(compound), -Uri:atom) is det.
+
+lodalot_uri_(Segments, Query, Uri) :-
+  uri_comps(Uri, uri(https,'hdt.lod.labs.vu.nl',Segments,Query,_)).
+
+
+
+% semi-deterministic
+query_term_(Compound1, Compound2) :-
+  ground(Compound1),
+  Compound1 =.. [Key,Term],
+  rdf_term_to_atom(Term, Atom),
+  Compound2 =.. [Key,Atom].
+
+
+
+%! sameas_uri_(+Segments:list(atom), +Query:list(compound), -Uri:atom) is det.
+
+sameas_uri_(Segments, Query, Uri) :-
+  uri_comps(Uri, uri(https,'sameas.cc',Segments,Query,_)).
+
+
+
+%! triple_(?S:non_literal, ?P:iri, ?O:rdf_term, +In:stream) is nondet.
+
+triple_(S, P, O, In) :-
   call_cleanup(
     (
       rdf_read_ntriples(In, Triples, []),
@@ -109,46 +204,10 @@ frank_triple(S, P, O) :-
     close(In)
   ).
 
-% semi-deterministic
-rdf_query_term(Compound1, Compound2) :-
-  ground(Compound1),
-  Compound1 =.. [Key,Term],
-  rdf_term_to_atom(Term, Atom),
-  Compound2 =.. [Key,Atom].
 
 
+%! triple_uri_(+Segments:list(atom), ?S:rdf_nonliteral, ?P:iri, ?O:rdf_term, -Uri:atom) is det.
 
-
-
-% GENERICS %
-
-%! frank_request(+Uri:atom, -X:term) is nondet.
-
-frank_request(Uri, X) :-
-  catch(http_open2(Uri, In, [accept(json)]), E, true),
-  (   var(E)
-  ->  call_cleanup(
-        json_read_dict(In, L, [value_string_as(atom)]),
-        close(In)
-      ),
-      (is_list(L) -> member(X, L) ; X = L)
-  ;   pp_error(E),
-      fail
-  ).
-
-pp_error(error(http_status(_,Msg),_)) :-
-  ansi_format([fg(red)], "~s\n", [Msg]).
-
-
-
-%! lodalot_uri(+Segments:list(atom), +Query:list(compound), -Uri:atom) is det.
-
-lodalot_uri(Segments, Query, Uri) :-
-  uri_comps(Uri, uri(https,'hdt.lod.labs.vu.nl',Segments,Query,_)).
-
-
-
-%! sameas_uri(+Segments:list(atom), +Query:list(compound), -Uri:atom) is det.
-
-sameas_uri(Segments, Query, Uri) :-
-  uri_comps(Uri, uri(https,'sameas.cc',Segments,Query,_)).
+triple_uri_(Segments, S, P, O, Uri) :-
+  convlist(query_term_, [subject(S),predicate(P),object(O)], Query),
+  lodalot_uri_([triple|Segments], Query, Uri).
