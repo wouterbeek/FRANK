@@ -1,9 +1,12 @@
 :- module(
   frank,
   [
+    count/3,   % ?S, ?P, ?O
     count/4,   % ?S, ?P, ?O, -N
     id/1,      % -Id
+    export/3,  % ?S, ?P, ?O
     sameas/2,  % ?Term1, ?Term2
+    sim/2,     % +C1, +C2
     term/1,    % ?Term
     term/2,    % +TermRole, ?Term
     term_id/2, % ?Term, ?Id
@@ -20,14 +23,21 @@ Federated Resource Architecture for Networked Knowledge
 */
 
 :- use_module(library(aggregate)).
+:- use_module(library(apply)).
 :- use_module(library(error)).
 :- use_module(library(http/json)).
 :- use_module(library(lists)).
+:- use_module(library(ordsets)).
 :- use_module(library(semweb/rdf_ntriples)).
+:- use_module(library(thread)).
+:- use_module(library(zlib)).
 
+:- use_module(library(dcg)).
 :- use_module(library(http/http_client2)).
 :- use_module(library(media_type)).
+:- use_module(library(sw/rdf_export)).
 :- use_module(library(sw/rdf_prefix)).
+:- use_module(library(sw/rdf_print)).
 :- use_module(library(sw/rdf_term)).
 :- use_module(library(uri_ext)).
 
@@ -36,8 +46,11 @@ Federated Resource Architecture for Networked Knowledge
    curl.
 
 :- rdf_meta
+   count(r, r, o),
    count(r, r, o, -),
+   export(r, r, o),
    sameas(o, o),
+   sim(o, o),
    subject(r),
    term(o),
    term(+, o),
@@ -48,11 +61,32 @@ Federated Resource Architecture for Networked Knowledge
 
 
 
+%! count(?S:rdf_nonliteral, ?P:iri, ?O:rdf_term) is det.
 %! count(?S:rdf_nonliteral, ?P:iri, ?O:rdf_term, -N:nonneg) is det.
+
+count(S, P, O) :-
+  count(S, P, O, N),
+  dcg_with_output_to(string(Str), rdf_dcg_triple_pattern(S, P, O)),
+  ansi_format([fg(green)], "~D solutions for Triple Pattern ~s.\n", [N,Str]).
+
 
 count(S, P, O, N) :-
   triple_uri_([count], S, P, O, Uri),
   json_request_(Uri, N).
+
+
+
+%! export(?S:rdf_nonliteral, ?P:iri, ?O:rdf_term) is nondet.
+
+export(S, P, O) :-
+  setup_call_cleanup(
+    gzopen('export.nt.gz', write, Out),
+    forall(
+      triple(S, P, O),
+      rdf_write_triple(Out, S, P, O)
+    ),
+    close(Out)
+  ).
 
 
 
@@ -78,6 +112,37 @@ sameas(Term1, Term2) :-
 sameas(Term1, Term2) :-
   term(Term1),
   sameas(Term1, Term2).
+
+
+
+%! sim(+C1:rdf_term, +C2:rdf_term) is det.
+
+sim(CName, DName) :-
+  concurrent_maplist(cext, [CName,DName], [C,D]),
+  ord_intersection(C, D, Intersection, DMinus),
+  ord_subtract(C, Intersection, CMinus),
+  concurrent_maplist(
+    length,
+    [C,D,Intersection,CMinus,DMinus],
+    [CSize,DSize,IntersectionSize,CMinusSize,DMinusSize]
+  ),
+  UnionSize is IntersectionSize + CMinusSize + DMinusSize,
+  (   CSize + DSize =:= 0
+  ->  Sim = 1
+  ;   Sim is IntersectionSize / UnionSize
+  ),
+  dcg_with_output_to(string(CLabel), rdf_dcg_term(CName)),
+  dcg_with_output_to(string(DLabel), rdf_dcg_term(DName)),
+  format("|CExt(~s)| = ~D\n", [CLabel,CSize]),
+  format("|CExt(~s)| = ~D\n", [DLabel,DSize]),
+  format("|CExt(~s) ∩ CExt(~s)| = ~D\n", [CLabel,DLabel,IntersectionSize]),
+  format("|CExt(~s) ∪ CExt(~s)| = ~D\n", [CLabel,DLabel,UnionSize]),
+  format("|CExt(~s) ∖ CExt(~s)| = ~D\n", [CLabel,DLabel,CMinusSize]),
+  format("|CExt(~s) ∖ CExt(~s)| = ~D\n", [DLabel,CLabel,DMinusSize]),
+  format("sim(~s,~s) = ~2f\n", [CLabel,DLabel,Sim]).
+
+cext(C, CExt) :-
+  aggregate_all(set(X), triple(X, rdf:type, C), CExt).
 
 
 
@@ -115,11 +180,11 @@ term_id(Term, Id) :-
   ground(Term), !,
   rdf_term_to_atom(Term, TermAtom),
   sameas_uri_([id], [term(TermAtom)], Uri),
-  request(Uri, Id).
+  json_request_(Uri, Id).
 term_id(Term, Id) :-
   ground(Id), !,
   sameas_uri_([term], [id(Id)], Uri),
-  request(Uri, TermAtom),
+  json_request_(Uri, TermAtom),
   rdf_atom_to_term(TermAtom, Term).
 term_id(Term, Id) :-
   instantiation_error(args(Term,Id)).
@@ -173,7 +238,7 @@ json_request_(Uri, Term) :-
 %! lodalot_uri_(+Segments:list(atom), +Query:list(compound), -Uri:atom) is det.
 
 lodalot_uri_(Segments, Query, Uri) :-
-  uri_comps(Uri, uri(https,'hdt.lod.labs.vu.nl',Segments,Query,_)).
+  uri_comps(Uri, uri(https,'hdt.lod.labs.vu.nl',Segments,[page_size(10 000)|Query],_)).
 
 
 
