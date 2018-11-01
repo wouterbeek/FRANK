@@ -1,16 +1,18 @@
 :- module(
   frank,
   [
-    count/3,   % ?S, ?P, ?O
-    count/4,   % ?S, ?P, ?O, -N
-    id/1,      % -Id
-    export/3,  % ?S, ?P, ?O
-    sameas/2,  % ?Term1, ?Term2
-    sim/2,     % +C1, +C2
-    term/1,    % ?Term
-    term/2,    % +TermRole, ?Term
-    term_id/2, % ?Term, ?Id
-    triple/3   % ?S, ?P, ?O
+    count/3,       % ?S, ?P, ?O
+    count/4,       % ?S, ?P, ?O, -N
+    id/1,          % -Id
+    export/3,      % ?S, ?P, ?O
+    export_axioms/0,
+    sameas/2,      % ?Term1, ?Term2
+    sim/2,         % +C1, +C2
+    term/1,        % ?Term
+    term/2,        % +TermRole, ?Term
+    term_id/2,     % ?Term, ?Id
+    term_prefix/2, % +Prefix, -Term
+    triple/3       % ?S, ?P, ?O
   ]
 ).
 
@@ -30,19 +32,21 @@ Federated Resource Architecture for Networked Knowledge
 :- use_module(library(ordsets)).
 :- use_module(library(semweb/rdf_ntriples)).
 :- use_module(library(thread)).
+:- use_module(library(yall)).
 :- use_module(library(zlib)).
 
 :- use_module(library(dcg)).
+:- use_module(library(file_ext)).
 :- use_module(library(http/http_client2)).
 :- use_module(library(media_type)).
-:- use_module(library(sw/rdf_export)).
-:- use_module(library(sw/rdf_prefix)).
-:- use_module(library(sw/rdf_print)).
-:- use_module(library(sw/rdf_term)).
+:- use_module(library(semweb/rdf_export)).
+:- use_module(library(semweb/rdf_prefix)).
+:- use_module(library(semweb/rdf_print)).
+:- use_module(library(semweb/rdf_term)).
 :- use_module(library(uri_ext)).
 
 :- initialization
-   rdf_assert_prefixes,
+   rdf_register_prefixes,
    curl.
 
 :- rdf_meta
@@ -79,13 +83,23 @@ count(S, P, O, N) :-
 %! export(?S:rdf_nonliteral, ?P:iri, ?O:rdf_term) is nondet.
 
 export(S, P, O) :-
-  setup_call_cleanup(
-    gzopen('export.nt.gz', write, Out),
-    forall(
-      triple(S, P, O),
-      rdf_write_triple(Out, S, P, O)
-    ),
-    close(Out)
+  write_to_file('export.nt.gz', rdf_write_triples(Out)).
+
+
+
+%! export_axioms is det.
+
+export_axioms :-
+  write_to_file(
+    'axioms.nt.gz',
+    [Out]>>forall(
+             term_prefix('http://www.w3.org/1999/02/22-rdf-syntax-ns#_', P),
+             (
+               rdf_write_triple(Out, P, rdf:type, rdfs:'ContainerMembershipProperty'),
+               rdf_write_triple(Out, P, rdfs:domain, rdfs:'Resource'),
+               rdf_write_triple(Out, P, rdfs:range, rdfs:'Resource')
+             )
+           )
   ).
 
 
@@ -178,16 +192,24 @@ term(TermRole, Term) :-
 
 term_id(Term, Id) :-
   ground(Term), !,
-  rdf_term_to_atom(Term, TermAtom),
-  sameas_uri_([id], [term(TermAtom)], Uri),
+  rdf_atom_term(Atom, Term),
+  sameas_uri_([id], [term(Atom)], Uri),
   json_request_(Uri, Id).
 term_id(Term, Id) :-
   ground(Id), !,
   sameas_uri_([term], [id(Id)], Uri),
-  json_request_(Uri, TermAtom),
-  rdf_atom_to_term(TermAtom, Term).
+  json_request_(Uri, Atom),
+  rdf_atom_term(Atom, Term).
 term_id(Term, Id) :-
   instantiation_error(args(Term,Id)).
+
+
+
+%! term_prefix(+Prefix:atom, -Term:rdf_term) is nondet.
+
+term_prefix(Prefix, Term) :-
+  lodalot_uri_([term], [prefix(Prefix)], Uri),
+  json_request_(Uri, Term).
 
 
 
@@ -238,7 +260,7 @@ json_request_(Uri, Term) :-
 %! lodalot_uri_(+Segments:list(atom), +Query:list(compound), -Uri:atom) is det.
 
 lodalot_uri_(Segments, Query, Uri) :-
-  uri_comps(Uri, uri(https,'hdt.lod.labs.vu.nl',Segments,[page_size(10 000)|Query],_)).
+  uri_comps(Uri, uri(https,'hdt.lod.labs.vu.nl',Segments,[page_size(1 000)|Query],_)).
 
 
 
@@ -246,7 +268,7 @@ lodalot_uri_(Segments, Query, Uri) :-
 query_term_(Compound1, Compound2) :-
   ground(Compound1),
   Compound1 =.. [Key,Term],
-  rdf_term_to_atom(Term, Atom),
+  rdf_atom_term(Atom, Term),
   Compound2 =.. [Key,Atom].
 
 

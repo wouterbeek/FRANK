@@ -6,8 +6,41 @@ Knowledge.
 
 * RDF terms
 
+The RDF terms that are stored in LOD-a-lot can be enumerated in the
+following way:
+
 #+BEGIN_SRC prolog
 ?- frank_term(Term).
+Term = 'http://creativecommons.org/ns#license' ;
+Term = 'http://schema.org/about' ;
+Term = 'http://schema.org/dateModified' ;
+Term = 'http://schema.org/description' ;
+Term = 'http://schema.org/inLanguage' ;
+Term = 'http://schema.org/isPartOf' .
+#+END_SRC
+
+It is also possible to enumerate only those terms that have some
+specified positional occurrence.
+
+| *Type*    | *Description*                                                                |
+|-----------+------------------------------------------------------------------------------|
+| node      | Terms that appear in the subject or object position of triples.              |
+| object    | Terms that appear in the object position of triples.                         |
+| predicate | Terms that appear in the predicate position of triples.                      |
+| shared    | Terms that appear in the subject and in the object position of some triples. |
+| sink      | Terms that only appear in the object position of some triples.               |
+| source    | Terms that only appear in the subject position of some triples.              |
+| subject   | Terms that only appear in the subject position of triples.                   |
+| term      | All terms.                                                                   |
+
+#+BEGIN_SRC prolog
+?- frank_term(source, Term).
+Term = 'http://wikiba.se/ontology-beta#Dump' ;
+Term = 'https://aa.wikibooks.org/wiki/MediaWiki:Sitenotice' ;
+Term = 'https://aa.wikibooks.org/wiki/Template:Archive_for_converted_LQT_page' ;
+Term = 'https://aa.wikibooks.org/wiki/Template:Archive_for_converted_wikitext_talk_page' ;
+Term = 'https://aa.wikibooks.org/wiki/Template:Delete' ;
+Term = 'https://aa.wikibooks.org/wiki/Template:FlowMention' .
 #+END_SRC
 
 * RDF triples
@@ -16,7 +49,9 @@ Knowledge.
 ?- frank_triple(dbr:'Frank_van_Harmelen', P, O).
 #+END_SRC
 
-* Identity closure (~owl:sameAs~)
+* OWL sameAs
+
+
 
 #+BEGIN_SRC prolog
 ?- frank_
