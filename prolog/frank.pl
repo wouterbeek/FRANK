@@ -33,7 +33,6 @@ Federated Resource Architecture for Networked Knowledge
 :- use_module(library(semweb/rdf_ntriples)).
 :- use_module(library(thread)).
 :- use_module(library(yall)).
-:- use_module(library(zlib)).
 
 :- use_module(library(dcg)).
 :- use_module(library(file_ext)).
@@ -70,8 +69,8 @@ Federated Resource Architecture for Networked Knowledge
 
 count(S, P, O) :-
   count(S, P, O, N),
-  dcg_with_output_to(string(Str), rdf_dcg_triple_pattern(S, P, O)),
-  ansi_format([fg(green)], "~D solutions for Triple Pattern ~s.\n", [N,Str]).
+  string_phrase(rdf_dcg_tp(S, P, O), String),
+  ansi_format([fg(green)], "~D solutions for Triple Pattern ~s.\n", [N,String]).
 
 
 count(S, P, O, N) :-
@@ -83,7 +82,7 @@ count(S, P, O, N) :-
 %! export(?S:rdf_nonliteral, ?P:iri, ?O:rdf_term) is nondet.
 
 export(S, P, O) :-
-  write_to_file('export.nt.gz', rdf_write_triples(Out)).
+  rdf_save_file('export.nt.gz').
 
 
 
@@ -145,15 +144,15 @@ sim(CName, DName) :-
   ->  Sim = 1
   ;   Sim is IntersectionSize / UnionSize
   ),
-  dcg_with_output_to(string(CLabel), rdf_dcg_term(CName)),
-  dcg_with_output_to(string(DLabel), rdf_dcg_term(DName)),
-  format("|CExt(~s)| = ~D\n", [CLabel,CSize]),
-  format("|CExt(~s)| = ~D\n", [DLabel,DSize]),
-  format("|CExt(~s) ∩ CExt(~s)| = ~D\n", [CLabel,DLabel,IntersectionSize]),
-  format("|CExt(~s) ∪ CExt(~s)| = ~D\n", [CLabel,DLabel,UnionSize]),
-  format("|CExt(~s) ∖ CExt(~s)| = ~D\n", [CLabel,DLabel,CMinusSize]),
-  format("|CExt(~s) ∖ CExt(~s)| = ~D\n", [DLabel,CLabel,DMinusSize]),
-  format("sim(~s,~s) = ~2f\n", [CLabel,DLabel,Sim]).
+  string_phrase(rdf_dcg_node(CName), CString),
+  string_phrase(rdf_dcg_node(DName), DString),
+  format("|CExt(~s)| = ~D\n", [CString,CSize]),
+  format("|CExt(~s)| = ~D\n", [DString,DSize]),
+  format("|CExt(~s) ∩ CExt(~s)| = ~D\n", [CString,DString,IntersectionSize]),
+  format("|CExt(~s) ∪ CExt(~s)| = ~D\n", [CString,DString,UnionSize]),
+  format("|CExt(~s) ∖ CExt(~s)| = ~D\n", [CString,DString,CMinusSize]),
+  format("|CExt(~s) ∖ CExt(~s)| = ~D\n", [DString,CString,DMinusSize]),
+  format("sim(~s,~s) = ~2f\n", [CString,DString,Sim]).
 
 cext(C, CExt) :-
   aggregate_all(set(X), triple(X, rdf:type, C), CExt).
